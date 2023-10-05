@@ -46,7 +46,7 @@ import statistics
 def print_usage():
 
 	my_print( " " )
-	my_print( " %s" % script_name )
+	my_print(f" {script_name}")
 	my_print( " " )
 	my_print( " Field G. Van Zee" )
 	my_print( " " )
@@ -55,7 +55,7 @@ def print_usage():
 	my_print( " " )
 	my_print( " Usage:" )
 	my_print( " " )
-	my_print( "   %s [options] drivername" % script_name )
+	my_print(f"   {script_name} [options] drivername")
 	my_print( " " )
 	my_print( " Arguments:" )
 	my_print( " " )
@@ -132,7 +132,7 @@ def main():
 		sys.exit(2)
 
 	for opt, optarg in opts:
-		if   opt == "-c":
+		if opt == "-c":
 			perf_col = optarg
 		elif opt == "-d":
 			delay = optarg
@@ -140,9 +140,6 @@ def main():
 			niter = optarg
 		elif opt == "-q":
 			quiet = True
-		elif opt == "-h":
-			print_usage()
-			sys.exit()
 		else:
 			print_usage()
 			sys.exit()
@@ -166,13 +163,9 @@ def main():
 	# Run the test driver once to detect the number of lines of output.
 	p = subprocess.run( driverfile, stdout=subprocess.PIPE )
 	lines0 = p.stdout.decode().splitlines()
-	num_lines0 = int(len(lines0))
+	num_lines0 = len(lines0)
 
-	# Initialize the list of lists (one list per performance result).
-	aperf = []
-	for i in range( num_lines0 ):
-		aperf.append( [] )
-
+	aperf = [[] for _ in range( num_lines0 )]
 	for it in iters:
 
 		# Run the test driver.
@@ -187,15 +180,9 @@ def main():
 			# Parse the current line to find the performance value.
 			line  = lines[i]
 			words = line.split()
-			if perf_col == -1:
-				perf  = words[ len(words)-2 ]
-			else:
-				perf  = words[ int(perf_col) ]
-
+			perf = words[ len(words)-2 ] if perf_col == -1 else words[ int(perf_col) ]
 			# As unlikely as it is, guard against Inf and NaN.
-			if float(perf) ==  float('Inf') or \
-			   float(perf) == -float('Inf') or \
-			   float(perf) ==  float('NaN'): perf = 0.0
+			if float(perf) in [float('Inf'), -float('Inf'), float('NaN')]: perf = 0.0
 
 			# Add the performance value to the list at the ith entry of aperf.
 			aperf[i].append( float(perf) )
@@ -206,9 +193,7 @@ def main():
 			minp =             min( aperf[i] )
 
 			# Only compute stdev() when we have two or more data points.
-			if len( aperf[i] ) > 1: stdp = statistics.stdev( aperf[i] )
-			else:                   stdp = 0.0
-
+			stdp = statistics.stdev( aperf[i] ) if len( aperf[i] ) > 1 else 0.0
 			# Construct a string to match the performance value and then
 			# use that string to search-and-replace with four format specs
 			# for the min, avg, max, and stdev values computed above.
@@ -253,20 +238,14 @@ def main():
 			# needed for call to re.sub() below).
 			line  = lines0[i]
 			words = line.split()
-			if perf_col == -1:
-				perf  = words[ len(words)-2 ]
-			else:
-				perf  = words[ int(perf_col) ]
-
+			perf = words[ len(words)-2 ] if perf_col == -1 else words[ int(perf_col) ]
 			# Compute stats for the current line.
 			avgp = statistics.mean( aperf[i] )
 			maxp =             max( aperf[i] )
 			minp =             min( aperf[i] )
 
 			# Only compute stdev() when we have two or more data points.
-			if len( aperf[i] ) > 1: stdp = statistics.stdev( aperf[i] )
-			else:                   stdp = 0.0
-
+			stdp = statistics.stdev( aperf[i] ) if len( aperf[i] ) > 1 else 0.0
 			# Construct a string to match the performance value and then
 			# use that string to search-and-replace with four format specs
 			# for the min, avg, max, and stdev values computed above.

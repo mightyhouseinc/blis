@@ -44,7 +44,7 @@ import datetime
 def print_usage():
 
 	my_print( " " )
-	my_print( " %s" % script_name )
+	my_print(f" {script_name}")
 	my_print( " " )
 	my_print( " Field G. Van Zee" )
 	my_print( " " )
@@ -55,7 +55,7 @@ def print_usage():
 	my_print( " " )
 	my_print( " Usage:" )
 	my_print( " " )
-	my_print( "   %s [options]" % script_name )
+	my_print(f"   {script_name} [options]")
 	my_print( " " )
 	my_print( " Arguments:" )
 	my_print( " " )
@@ -130,17 +130,14 @@ def main():
 		sys.exit(2)
 
 	for opt, optarg in opts:
-		if opt == "-o":
-			the_org = optarg
-		elif opt == "-u":
-			update_only = True
-		elif opt == "-d":
+		if opt == "-d":
 			dry_run = True
+		elif opt == "-o":
+			the_org = optarg
 		elif opt == "-q":
 			quiet = True
-		elif opt == "-h":
-			print_usage()
-			sys.exit()
+		elif opt == "-u":
+			update_only = True
 		else:
 			print_usage()
 			sys.exit()
@@ -163,7 +160,7 @@ def main():
 	# Run the 'git status' command and capture the output.
 	p = subprocess.run( gitstatus, stdout=subprocess.PIPE, shell=True )
 	git_lines = p.stdout.decode().splitlines()
-	git_num_lines = int( len( git_lines ) )
+	git_num_lines = len(git_lines)
 
 	# Consider each line of output from 'git status'
 	for i in range( git_num_lines ):
@@ -175,27 +172,12 @@ def main():
 
 		# Check the first character of the git output. We want to only update
 		# files that are new ('A'), modified ('M'), or renamed ('R').
-		if mod_char != 'A' and \
-		   mod_char != 'M' and \
-		   mod_char != 'R': continue
+		if mod_char not in ['A', 'M', 'R']: continue
 
 		# Identify the filename for the current line of 'git status' output.
-		if mod_char == 'R':
-			# For renamed files, we need to reference them by their new names,
-			# which appear after the "->" char sequence in git_words[2].
-			filename = git_words[3]
-		else:
-			filename = git_words[1]
-
-		#my_echo( "-debug---- %s" % filename )
-
-		# Start by opening the file. (We can assume it exists since it
-		# was found by 'git status', so no need to check for existence.)
-		# Read all lines in the file and then close it.
-		f = open( filename, "r" )
-		file_lines = f.readlines()
-		f.close()
-
+		filename = git_words[3] if mod_char == 'R' else git_words[1]
+		with open( filename, "r" ) as f:
+			file_lines = f.readlines()
 		# Concatenate all lines in the file into one string.
 		file_string = "".join( file_lines )
 
@@ -205,7 +187,7 @@ def main():
 		# If the file does not have any copyright notice in it already, we
 		# assume we don't need to update it.
 		if not has_cr:
-			my_echo( "[nocrline] %s" % filename )
+			my_echo(f"[nocrline] {filename}")
 			continue
 
 		# Check whether the file already has a copyright for the_org. We may
@@ -225,11 +207,9 @@ def main():
 			# Iterate through the lines in the current file.
 			for line in file_lines:
 
-				result = re.search( 'Copyright \(C\) ([0-9][0-9][0-9][0-9]), %s' % the_org, line )
-
-				# If the current line matches a copyright line for the_org...
-				if result:
-
+				if result := re.search(
+					'Copyright \(C\) ([0-9][0-9][0-9][0-9]), %s' % the_org, line
+				):
 					# Extract the year saved as the first/only group in the
 					# regular expression.
 					old_year = result.group(1)
@@ -238,116 +218,98 @@ def main():
 					if old_year != cur_year:
 
 						# Substitute the old year for the current year.
-						find_line = ' %s, ' % old_year
-						repl_line = ' %s, ' % cur_year
+						find_line = f' {old_year}, '
+						repl_line = f' {cur_year}, '
 						line_ny = re.sub( find_line, repl_line, line )
 
-						my_echo( "[updated ] %s" % filename )
+						my_echo(f"[updated ] {filename}")
 
 						# Add the updated line to the running list.
 						mod_file_lines += line_ny
 
 					else:
 
-						my_echo( "[up2date ] %s" % filename )
+						my_echo(f"[up2date ] {filename}")
 
 						# Add the unchanged line to the running list.
 						mod_file_lines += line
-							
+
 				else:
 					# Add the unchanged line to the running list.
 					mod_file_lines += line
 
-				# endif result
+							# endif result
 
-			# endfor
+					# endfor
 
 		else:
 
 			# Don't go any further if we're only updating existing copyright
 			# lines.
 			if update_only:
-				my_echo( "[nocrline] %s" % filename )
+				my_echo(f"[nocrline] {filename}")
 				continue
 
 			num_file_lines = len( file_lines )
 
 			# Iterate through the lines in the current file.
-			for i in range( int(num_file_lines) ):
+			for i in range(num_file_lines):
 
 				line = file_lines[i]
 
 				# Only look at the next line if we are not at the last line.
-				if i < int(num_file_lines) - 1:
-					line_next = file_lines[i+1]
-				else:
-					line_next = file_lines[i]
-
+				line_next = file_lines[i+1] if i < num_file_lines - 1 else file_lines[i]
 				# Try to match both the current line and the next line.
 				result  = re.search( 'Copyright \(C\) ([0-9][0-9][0-9][0-9]), (.*)', line )
 				resnext = re.search( 'Copyright \(C\) ([0-9][0-9][0-9][0-9]), (.*)', line_next )
 
 				# Parse the results.
-				if result:
+				if result and resnext or not result:
 
-					if resnext:
-
-						# The current line matches but so does the next. Add the
-						# current line unchanged to the running list.
-						mod_file_lines += line
-
-					else:
-
-						# The current line matches but the next does not. Thus,
-						# this branch only executes for the *last* copyright line
-						# in the file.
-						
-						# Extract the year and organization from the matched
-						# string.
-						old_year = result.group(1)
-						old_org  = result.group(2)
-
-						# Set up search/replace strings to convert the current
-						# line into one that serves as copyright for the_org.
-						find_line = '%s, %s' % (old_year, old_org)
-						repl_line = '%s, %s' % (cur_year, the_org)
-						line_nyno = re.sub( find_line, repl_line, line )
-
-						# Add the current line and then also insert our new
-						# copyright line for the_org into the running list.
-						mod_file_lines += line
-						mod_file_lines += line_nyno
-
-						my_echo( "[added   ] %s" % filename )
-
-					# endif resnext
+					# The current line matches but so does the next. Add the
+					# current line unchanged to the running list.
+					mod_file_lines += line
 
 				else:
 
-					# The current line does not match. Pass it through unchanged.
+					# The current line matches but the next does not. Thus,
+					# this branch only executes for the *last* copyright line
+					# in the file.
+
+					# Extract the year and organization from the matched
+					# string.
+					old_year = result.group(1)
+					old_org  = result.group(2)
+
+						# Set up search/replace strings to convert the current
+						# line into one that serves as copyright for the_org.
+					find_line = f'{old_year}, {old_org}'
+					repl_line = f'{cur_year}, {the_org}'
+					line_nyno = re.sub( find_line, repl_line, line )
+
+					# Add the current line and then also insert our new
+					# copyright line for the_org into the running list.
 					mod_file_lines += line
+					mod_file_lines += line_nyno
 
-				# endif result
+					my_echo(f"[added   ] {filename}")
 
-			# endfor
+							# endif result
+
+					# endfor
 
 		# endif has_org_cr
 
 		if not dry_run:
 
-			# Open the file for writing.
-			f = open( filename, "w" )
+			with open( filename, "w" ) as f:
+				# Join the modified file lines into a single string.
+				final_string = "".join( mod_file_lines )
 
-			# Join the modified file lines into a single string.
-			final_string = "".join( mod_file_lines )
+				# Write the lines to the file.
+				f.write( final_string )
 
-			# Write the lines to the file.
-			f.write( final_string )
-
-			# Close the file.
-			f.close()
-
-		# endif not dry_run
+			# endif not dry_run
 
 	# Return from main().
 	return 0

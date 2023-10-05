@@ -41,7 +41,7 @@ import re
 def print_usage():
 
 	my_print( " " )
-	my_print( " %s" % script_name )
+	my_print(f" {script_name}")
 	my_print( " " )
 	my_print( " Field G. Van Zee" )
 	my_print( " " )
@@ -51,7 +51,7 @@ def print_usage():
 	my_print( " " )
 	my_print( " Usage:" )
 	my_print( " " )
-	my_print( "   %s header header_out temp_dir dir_list" % script_name )
+	my_print(f"   {script_name} header header_out temp_dir dir_list")
 	my_print( " " )
 	my_print( " Arguments:" )
 	my_print( " " )
@@ -184,11 +184,9 @@ def get_header_path( filename, header_dirpaths ):
 	for dirpath in header_dirpaths:
 
 		# Construct a possible path to the sought-after file.
-		cur_filepath = "%s/%s" % ( dirpath, filename )
+		cur_filepath = f"{dirpath}/{filename}"
 
-		# Check whether the file exists.
-		found = os.path.exists( cur_filepath )
-		if found:
+		if found := os.path.exists(cur_filepath):
 			filepath = cur_filepath
 			break
 
@@ -212,97 +210,78 @@ def flatten_header( inputfile, header_dirpaths, cursp ):
 
 	ostring  = ""
 
-	# Open the input file to process.
-	ifile = open( inputfile, "r" )
+	with open( inputfile, "r" ) as ifile:
+			# Iterate over the lines in the file.
+		while True:
 
-	# Iterate over the lines in the file.
-	while True:
+			# Read a line in the file.
+			line = ifile.readline()
 
-		# Read a line in the file.
-		line = ifile.readline()
+			# Check for EOF.
+			if line == '': break
 
-		# Check for EOF.
-		if line == '': break
+			if result := regex.search(line):
+				# Extract the header file referenced in the #include directive,
+				# saved as the second group in the regular expression
+				# above.
+				header = result.group(2)
 
-		# Check for the #include directive and isolate the header name within
-		# a group (parentheses).
-		#result = re.search( '^[\s]*#include (["<])([\w\.\-/]*)([">])', line )
-		result = regex.search( line )
+				echov2(f"{cursp}found reference to '{header}'.")
 
-		# If the line contained a #include directive, we must try to replace
-		# it with the contents of the header referenced by the directive.
-		if result:
+				# Search for the path to the header referenced in the #include
+				# directive.
+				header_path = get_header_path( header, header_dirpaths )
 
-			# Extract the header file referenced in the #include directive,
-			# saved as the second group in the regular expression
-			# above.
-			header = result.group(2)
+							# First, check if the header is our root header (and if so, ignore it).
+							# Otherwise, if the header was found, we recurse. Otherwise, we output
+							# the #include directive with a comment indicating that it as skipped
+				if header == root_inputfile:
 
-			echov2( "%sfound reference to '%s'." % ( cursp, header ) )
+					markl = result.group(1)
+					markr = result.group(3)
 
-			# Search for the path to the header referenced in the #include
-			# directive.
-			header_path = get_header_path( header, header_dirpaths )
+					echov2(
+						f"{cursp}this is the root header '{header}'; commenting out / skipping."
+					)
 
-			# First, check if the header is our root header (and if so, ignore it).
-			# Otherwise, if the header was found, we recurse. Otherwise, we output
-			# the #include directive with a comment indicating that it as skipped
-			if header == root_inputfile:
+					# If the header found is our root header, then we cannot
+					# recurse into it lest we enter an infinite loop. Output the
+					# line but make sure it's commented out entirely.
+					ostring += "%s #include %c%s%c %c" \
+					           % ( skipstr, markl, header, markr, '\n' )
 
-				markl = result.group(1)
-				markr = result.group(3)
+				elif header_path:
 
-				echov2( "%sthis is the root header '%s'; commenting out / skipping." \
-				        % ( cursp, header ) )
+					echov2(f"{cursp}located file '{header_path}'; recursing.")
 
-				# If the header found is our root header, then we cannot
-				# recurse into it lest we enter an infinite loop. Output the
-				# line but make sure it's commented out entirely.
-				ostring += "%s #include %c%s%c %c" \
-				           % ( skipstr, markl, header, markr, '\n' )
+					# Mark the beginning of the header being inserted.
+					ostring += "%s%s%c" % ( beginstr, header, '\n' )
 
-			elif header_path:
+									# Recurse on the header, accumulating the string.
+					ostring += flatten_header(header_path, header_dirpaths, f"{cursp}  ")
 
-				echov2( "%slocated file '%s'; recursing." \
-				        % ( cursp, header_path ) )
+					# Mark the end of the header being inserted.
+					ostring += "%s%s%c" % ( endstr, header, '\n' )
 
-				# Mark the beginning of the header being inserted.
-				ostring += "%s%s%c" % ( beginstr, header, '\n' )
+					echov2(f"{cursp}header file '{header_path}' fully processed.")
 
-				# Recurse on the header, accumulating the string.
-				ostring += flatten_header( header_path, header_dirpaths, cursp + "  " )
+				else:
 
-				# Mark the end of the header being inserted.
-				ostring += "%s%s%c" % ( endstr, header, '\n' )
+					markl = result.group(1)
+					markr = result.group(3)
 
-				echov2( "%sheader file '%s' fully processed." \
-				        % ( cursp, header_path ) )
+					echov2(f"{cursp}could not locate file '{header}'; marking as skipped.")
 
+					# If the header was not found, output the line with a
+					# comment that the header was skipped.
+					ostring += "#include %c%s%c %s%c" \
+					           % ( markl, header, markr, skipstr, '\n' )
 			else:
+							# If the line did not contain a #include directive, simply output
+							# the line verbatim.
+				ostring += f"{line}"
 
-				markl = result.group(1)
-				markr = result.group(3)
-
-				echov2( "%scould not locate file '%s'; marking as skipped." \
-				        % ( cursp, header ) )
-
-				# If the header was not found, output the line with a
-				# comment that the header was skipped.
-				ostring += "#include %c%s%c %s%c" \
-				           % ( markl, header, markr, skipstr, '\n' )
-			# endif
-
-		else:
-			# If the line did not contain a #include directive, simply output
-			# the line verbatim.
-			ostring += "%s" % line
-
-		# endif
-
-	# endwhile
-	
-	# Close the input file.
-	ifile.close()
+				# endif
 
 	echov1_n( "." )
 
@@ -315,7 +294,7 @@ def find_header_dirs( dirpath ):
 	header_dirpaths = []
 	for root, dirs, files in os.walk( dirpath, topdown=True ):
 
-		echov2_n( "scanning contents of %s" % root )
+		echov2_n(f"scanning contents of {root}")
 
 		if list_contains_header( files ):
 
@@ -325,7 +304,7 @@ def find_header_dirs( dirpath ):
 		else:
 			echov2_n2( "" )
 
-		#endif
+			#endif
 
 	#endfor
 
@@ -375,25 +354,20 @@ def main():
 		sys.exit(2)
 
 	for opt, optarg in opts:
-		if   opt == "-o":
+		if opt == "-c":
+			strip_comments = True
+		elif opt == "-o":
 			output_name = optarg
 		elif opt == "-r":
 			recursive_flag = True
-		elif opt == "-c":
-			strip_comments = True
 		elif opt == "-v":
 			verbose_flag = optarg
-		elif opt == "-h":
-			print_usage()
-			sys.exit()
 		else:
 			print_usage()
 			sys.exit()
 
 	# Make sure that the verboseness level is valid.
-	if ( verbose_flag != "0" and
-	     verbose_flag != "1" and
-	     verbose_flag != "2" ):
+	if verbose_flag not in ["0", "1", "2"]:
 		my_print( "%s Invalid verboseness argument: %s" \
 		                  % output_name, verbose_flag )
 		sys.exit()
@@ -426,7 +400,7 @@ def main():
 
 		#absitem = os.path.abspath( item )
 
-		echov2_n( "checking " + item )
+		echov2_n(f"checking {item}")
 
 		if os.path.exists( item ):
 			dir_list_checked.append( item )
@@ -442,16 +416,19 @@ def main():
 
 	echov2( "check summary:" )
 	echov2( "  accessible directories:" )
-	echov2( "  %s" % ' '.join( dir_list ) )
+	echov2(f"  {' '.join(dir_list)}")
 
+	header_dirpaths = []
 	# Generate a list of directories (header_dirpaths) which will be searched
 	# whenever a #include directive is encountered. The method by which
 	# header_dirpaths is compiled will depend on whether the recursive flag
 	# was given.
-	if recursive_flag:
-
-		header_dirpaths = []
-		for d in dir_list:
+	for d in dir_list:
+			# Generate a list of directories (header_dirpaths) which will be searched
+			# whenever a #include directive is encountered. The method by which
+			# header_dirpaths is compiled will depend on whether the recursive flag
+			# was given.
+		if recursive_flag:
 
 			# For each directory in dir_list, recursively walk that directory
 			# and return a list of directories that contain headers.
@@ -461,18 +438,11 @@ def main():
 			# list of directory paths that contain headers.
 			header_dirpaths += d_dirpaths
 
-		# endfor
+				# endfor
 
-	else:
+		else:
 
-		# If the recursive flag was not given, we can just use dir_list
-		# as-is, though we opt to filter out the directories that don't
-		# contain .h files.
-
-		header_dirpaths = []
-		for d in dir_list:
-
-			echov2_n( "scanning %s" % d )
+			echov2_n(f"scanning {d}")
 
 			# Acquire a list of the directory's contents.
 			sub_items = os.listdir( d )
@@ -484,45 +454,38 @@ def main():
 				echov2_n2( "...found headers." )
 			else:
 				echov2_n2( "...no headers found." )
-			# endif
-
-		# endfor
+				# endfor
 
 	# endfor
 
 	echov2( "scan summary:" )
 	echov2( "  headers found in:" )
-	echov2( "  %s" % ' '.join( header_dirpaths ) )
+	echov2(f"  {' '.join(header_dirpaths)}")
 
-	echov2( "preparing to monolithify '%s'" % inputfile )
+	echov2(f"preparing to monolithify '{inputfile}'")
 
-	echov2( "new header will be saved to '%s'" % outputfile )
+	echov2(f"new header will be saved to '{outputfile}'")
 
 	echov1_n( "." )
 
-	# Open the output file.
-	ofile = open( outputfile, "w" )
+	with open( outputfile, "w" ) as ofile:
+		# Precompile the main regular expression used to isolate #include
+		# directives and the headers they reference. This regex object will
+		# get reused over and over again in flatten_header().
+		regex = re.compile( '^[\s]*#include (["<])([\w\.\-/]*)([">])' )
 
-	# Precompile the main regular expression used to isolate #include
-	# directives and the headers they reference. This regex object will
-	# get reused over and over again in flatten_header().
-	regex = re.compile( '^[\s]*#include (["<])([\w\.\-/]*)([">])' )
+		# Recursively substitute headers for occurrences of #include directives.
+		final_string = flatten_header( inputfile, header_dirpaths, nestsp )
 
-	# Recursively substitute headers for occurrences of #include directives.
-	final_string = flatten_header( inputfile, header_dirpaths, nestsp )
+		# Strip C-style comments from the final output, if requested.
+		if strip_comments:
+			final_string = strip_cstyle_comments( final_string )
 
-	# Strip C-style comments from the final output, if requested.
-	if strip_comments:
-		final_string = strip_cstyle_comments( final_string )
-
-	# Write the lines to the file.
-	ofile.write( final_string )
-
-	# Close the output file.
-	ofile.close()
+		# Write the lines to the file.
+		ofile.write( final_string )
 
 	echov2( "substitution complete." )
-	echov2( "monolithic header saved as '%s'" % outputfile )
+	echov2(f"monolithic header saved as '{outputfile}'")
 
 	echov1_n2( "." )
 
